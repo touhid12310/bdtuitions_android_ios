@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Expo
+.expo/
+dist/
+npm-debug.*
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build
+build/
+.gradle/
+local.properties
+
+# Android
+android/.gradle
+android/build
+android/.idea
+
+# iOS
+ios/Pods
+ios/Podfile.lock
+ios/xcworkspace/
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.cache/
+*.log
