@@ -6,6 +6,10 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
+  Modal,
+  TextInput,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -137,6 +141,22 @@ const TuitionItem: React.FC<TuitionItemProps> = ({ tuition, onPress }) => (
   </Card>
 );
 
+// Filter Option Item
+const FilterOption: React.FC<{
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}> = ({ label, selected, onPress }) => (
+  <TouchableOpacity
+    style={[styles.filterOption, selected && styles.filterOptionSelected]}
+    onPress={onPress}
+  >
+    <Text style={[styles.filterOptionText, selected && styles.filterOptionTextSelected]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
 const TuitionsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const [tuitions, setTuitions] = useState<Tuition[]>([]);
@@ -145,7 +165,51 @@ const TuitionsScreen: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const [filters, setFilters] = useState<TuitionsFilter>({});
+
+  // Filter modal state
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [tempFilters, setTempFilters] = useState<TuitionsFilter>({});
+  const [cities, setCities] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [loadingAreas, setLoadingAreas] = useState(false);
+
+  // Picker modal state
+  const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
+  const [showGenderPicker, setShowGenderPicker] = useState(false);
+
+  const genderOptions = ['ALL', 'Male', 'Female'];
+
+  const fetchCities = async () => {
+    setLoadingCities(true);
+    try {
+      const response = await tuitionsApi.getCities();
+      if (response.success) {
+        setCities(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+    } finally {
+      setLoadingCities(false);
+    }
+  };
+
+  const fetchAreas = async (city: string) => {
+    setLoadingAreas(true);
+    try {
+      const response = await tuitionsApi.getAreas(city);
+      if (response.success) {
+        setAreas(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching areas:', error);
+    } finally {
+      setLoadingAreas(false);
+    }
+  };
 
   const fetchTuitions = async (pageNum: number, isRefresh: boolean = false) => {
     if (isRefresh) {
@@ -164,6 +228,7 @@ const TuitionsScreen: React.FC = () => {
           setTuitions((prev) => [...prev, ...newTuitions]);
         }
         setHasMore(response.meta.current_page < response.meta.last_page);
+        setTotalCount(response.meta.total);
         setPage(pageNum);
       }
     } catch (error) {
@@ -193,6 +258,55 @@ const TuitionsScreen: React.FC = () => {
     navigation.navigate('TuitionDetail', { tuitionId: tuition.id });
   };
 
+  const openFilterModal = () => {
+    setTempFilters({ ...filters });
+    fetchCities();
+    if (filters.city) {
+      fetchAreas(filters.city);
+    }
+    setShowFilterModal(true);
+  };
+
+  const applyFilters = () => {
+    // Remove empty values
+    const cleanFilters: TuitionsFilter = {};
+    if (tempFilters.tuition_code) cleanFilters.tuition_code = tempFilters.tuition_code;
+    if (tempFilters.city) cleanFilters.city = tempFilters.city;
+    if (tempFilters.area) cleanFilters.area = tempFilters.area;
+    if (tempFilters.gender && tempFilters.gender !== 'ALL') cleanFilters.gender = tempFilters.gender;
+
+    setFilters(cleanFilters);
+    setShowFilterModal(false);
+    setLoading(true);
+  };
+
+  const clearFilters = () => {
+    setTempFilters({});
+    setAreas([]);
+  };
+
+  const handleCitySelect = (city: string) => {
+    setTempFilters({ ...tempFilters, city, area: undefined });
+    setShowCityPicker(false);
+    if (city) {
+      fetchAreas(city);
+    } else {
+      setAreas([]);
+    }
+  };
+
+  const handleAreaSelect = (area: string) => {
+    setTempFilters({ ...tempFilters, area: area || undefined });
+    setShowAreaPicker(false);
+  };
+
+  const handleGenderSelect = (gender: string) => {
+    setTempFilters({ ...tempFilters, gender: gender === 'ALL' ? undefined : gender });
+    setShowGenderPicker(false);
+  };
+
+  const activeFilterCount = Object.values(filters).filter(v => v && v !== 'ALL').length;
+
   const renderFooter = () => {
     if (!loadingMore) return null;
     return (
@@ -211,16 +325,72 @@ const TuitionsScreen: React.FC = () => {
       {/* Verification Banner */}
       <VerificationBanner />
 
-      {/* Search/Filter Bar */}
+      {/* Header with count */}
+      <View style={styles.headerSection}>
+        <Text style={styles.headerTitle}>{totalCount} Tuition Available</Text>
+      </View>
+
+      {/* Filter Bar */}
       <View style={styles.filterBar}>
-        <TouchableOpacity style={styles.searchButton}>
+        <TouchableOpacity style={styles.searchButton} onPress={openFilterModal}>
           <Icon name="magnify" size={20} color={colors.textSecondary} />
-          <Text style={styles.searchText}>Search tuitions...</Text>
+          <Text style={styles.searchText}>
+            {filters.tuition_code || 'Search tuitions...'}
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.filterButton}>
+        <TouchableOpacity style={styles.filterButton} onPress={openFilterModal}>
           <Icon name="filter-variant" size={24} color={colors.primary} />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
+
+      {/* Active Filters Display */}
+      {activeFilterCount > 0 && (
+        <View style={styles.activeFilters}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {filters.tuition_code && (
+              <View style={styles.activeFilterChip}>
+                <Text style={styles.activeFilterText}>Code: {filters.tuition_code}</Text>
+                <TouchableOpacity onPress={() => setFilters({ ...filters, tuition_code: undefined })}>
+                  <Icon name="close" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {filters.city && (
+              <View style={styles.activeFilterChip}>
+                <Text style={styles.activeFilterText}>{filters.city}</Text>
+                <TouchableOpacity onPress={() => setFilters({ ...filters, city: undefined, area: undefined })}>
+                  <Icon name="close" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {filters.area && (
+              <View style={styles.activeFilterChip}>
+                <Text style={styles.activeFilterText}>{filters.area}</Text>
+                <TouchableOpacity onPress={() => setFilters({ ...filters, area: undefined })}>
+                  <Icon name="close" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {filters.gender && (
+              <View style={styles.activeFilterChip}>
+                <Text style={styles.activeFilterText}>{filters.gender}</Text>
+                <TouchableOpacity onPress={() => setFilters({ ...filters, gender: undefined })}>
+                  <Icon name="close" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            <TouchableOpacity style={styles.clearAllButton} onPress={() => setFilters({})}>
+              <Icon name="close-circle" size={16} color={colors.error} />
+              <Text style={styles.clearAllText}>Clear All</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
 
       <FlatList
         style={styles.list}
@@ -244,6 +414,221 @@ const TuitionsScreen: React.FC = () => {
           />
         }
       />
+
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilterModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFilterModal(false)}
+          />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filter Tuitions</Text>
+              <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+                <Icon name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {/* Tuition Code */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Tuition Code</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  placeholder="Enter Tuition Code"
+                  placeholderTextColor={colors.textSecondary}
+                  value={tempFilters.tuition_code || ''}
+                  onChangeText={(text) => setTempFilters({ ...tempFilters, tuition_code: text })}
+                />
+              </View>
+
+              {/* City */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>City</Text>
+                <TouchableOpacity
+                  style={styles.filterSelect}
+                  onPress={() => setShowCityPicker(true)}
+                >
+                  <Text style={tempFilters.city ? styles.filterSelectText : styles.filterSelectPlaceholder}>
+                    {tempFilters.city || 'Select City'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Area */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Area</Text>
+                <TouchableOpacity
+                  style={[styles.filterSelect, !tempFilters.city && styles.filterSelectDisabled]}
+                  onPress={() => tempFilters.city && setShowAreaPicker(true)}
+                  disabled={!tempFilters.city}
+                >
+                  <Text style={tempFilters.area ? styles.filterSelectText : styles.filterSelectPlaceholder}>
+                    {tempFilters.area || (tempFilters.city ? 'Select Area' : 'Select City First')}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Gender */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Gender</Text>
+                <TouchableOpacity
+                  style={styles.filterSelect}
+                  onPress={() => setShowGenderPicker(true)}
+                >
+                  <Text style={tempFilters.gender ? styles.filterSelectText : styles.filterSelectPlaceholder}>
+                    {tempFilters.gender || 'ALL'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button
+                title="Clear"
+                onPress={clearFilters}
+                variant="outline"
+                style={styles.footerButton}
+              />
+              <Button
+                title="Apply Filter"
+                onPress={applyFilters}
+                style={styles.footerButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* City Picker Modal */}
+      <Modal
+        visible={showCityPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCityPicker(false)}
+      >
+        <View style={styles.pickerModalContainer}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowCityPicker(false)}
+          />
+          <View style={styles.pickerContent}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Select City</Text>
+              <TouchableOpacity onPress={() => setShowCityPicker(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            {loadingCities ? (
+              <LoadingSpinner />
+            ) : (
+              <ScrollView style={styles.pickerList}>
+                <FilterOption
+                  label="ALL"
+                  selected={!tempFilters.city}
+                  onPress={() => handleCitySelect('')}
+                />
+                {cities.map((city) => (
+                  <FilterOption
+                    key={city}
+                    label={city}
+                    selected={tempFilters.city === city}
+                    onPress={() => handleCitySelect(city)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Area Picker Modal */}
+      <Modal
+        visible={showAreaPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAreaPicker(false)}
+      >
+        <View style={styles.pickerModalContainer}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowAreaPicker(false)}
+          />
+          <View style={styles.pickerContent}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Select Area</Text>
+              <TouchableOpacity onPress={() => setShowAreaPicker(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            {loadingAreas ? (
+              <LoadingSpinner />
+            ) : (
+              <ScrollView style={styles.pickerList}>
+                <FilterOption
+                  label="ALL"
+                  selected={!tempFilters.area}
+                  onPress={() => handleAreaSelect('')}
+                />
+                {areas.map((area) => (
+                  <FilterOption
+                    key={area}
+                    label={area}
+                    selected={tempFilters.area === area}
+                    onPress={() => handleAreaSelect(area)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gender Picker Modal */}
+      <Modal
+        visible={showGenderPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGenderPicker(false)}
+      >
+        <View style={styles.pickerModalContainer}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowGenderPicker(false)}
+          />
+          <View style={styles.pickerContent}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Select Gender</Text>
+              <TouchableOpacity onPress={() => setShowGenderPicker(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {genderOptions.map((gender) => (
+                <FilterOption
+                  key={gender}
+                  label={gender}
+                  selected={(tempFilters.gender || 'ALL') === gender}
+                  onPress={() => handleGenderSelect(gender)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -255,6 +640,15 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  headerSection: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+  },
+  headerTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '600',
+    color: '#fff',
   },
   filterBar: {
     flexDirection: 'row',
@@ -277,11 +671,62 @@ const styles = StyleSheet.create({
   searchText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
+    flex: 1,
   },
   filterButton: {
     padding: spacing.sm,
     backgroundColor: colors.background,
     borderRadius: borderRadius.md,
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.error,
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  activeFilters: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    marginRight: spacing.sm,
+    gap: spacing.xs,
+  },
+  activeFilterText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xs,
+  },
+  clearAllText: {
+    color: colors.error,
+    fontSize: fontSize.sm,
+    fontWeight: '500',
   },
   listContent: {
     padding: spacing.md,
@@ -292,11 +737,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Card Header Section (Blue background)
+  // Card Header Section (Cyan background)
   cardHeaderSection: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#17a2b8',
     padding: spacing.md,
-    paddingRight: spacing.xl + spacing.lg, // Extra space for badge
+    paddingRight: spacing.xl + spacing.lg,
   },
   cardTitle: {
     fontSize: fontSize.md,
@@ -397,6 +842,138 @@ const styles = StyleSheet.create({
 
   footerLoader: {
     paddingVertical: spacing.lg,
+  },
+
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalBody: {
+    padding: spacing.md,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerButton: {
+    flex: 1,
+  },
+
+  // Filter group styles
+  filterGroup: {
+    marginBottom: spacing.md,
+  },
+  filterLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  filterInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  filterSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+  },
+  filterSelectDisabled: {
+    opacity: 0.5,
+  },
+  filterSelectText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  filterSelectPlaceholder: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+  },
+
+  // Picker modal styles
+  pickerModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  pickerContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '60%',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  pickerList: {
+    padding: spacing.md,
+  },
+  filterOption: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  filterOptionSelected: {
+    backgroundColor: colors.primary + '20',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  filterOptionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  filterOptionTextSelected: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });
 

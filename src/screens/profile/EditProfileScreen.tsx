@@ -52,11 +52,16 @@ const HSC_GROUP_OPTIONS = [
   { label: 'A Level', value: 'A Level' },
 ];
 
+interface FieldErrors {
+  [key: string]: string;
+}
+
 const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { teacher, updateTeacher } = useAuthStore();
 
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [formData, setFormData] = useState({
     expected_class: teacher?.expected_class || '',
     expected_subject: teacher?.expected_subject || '',
@@ -70,11 +75,33 @@ const EditProfileScreen: React.FC = () => {
     hsc_group: teacher?.hsc_group || '',
   });
 
+  const fieldLabels: { [key: string]: string } = {
+    expected_class: 'Expected Class',
+    expected_subject: 'Expected Subject',
+    expected_medium: 'Expected Medium',
+    day_per_week: 'Days Per Week',
+    expected_salary: 'Expected Salary',
+    mother_sister_phone: "Mother's/Sister's Phone",
+    school_name: 'School Name',
+    ssc_group: 'SSC Group',
+    college_name: 'College Name',
+    hsc_group: 'HSC Group',
+  };
+
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const handleSave = async () => {
+    setErrors({});
     setLoading(true);
     try {
       const response = await apiClient.put(API_ENDPOINTS.PROFILE, {
@@ -87,8 +114,33 @@ const EditProfileScreen: React.FC = () => {
         Alert.alert('Success', 'Profile updated successfully!');
         navigation.goBack();
       }
-    } catch (error) {
-      Alert.alert('Error', handleApiError(error as any));
+    } catch (error: any) {
+      // Parse validation errors from API response
+      if (error.response?.data?.errors) {
+        const apiErrors = error.response.data.errors;
+        const fieldErrors: FieldErrors = {};
+        const missingFields: string[] = [];
+
+        Object.keys(apiErrors).forEach((field) => {
+          fieldErrors[field] = apiErrors[field][0];
+          if (fieldLabels[field]) {
+            missingFields.push(fieldLabels[field]);
+          }
+        });
+
+        setErrors(fieldErrors);
+
+        // Show user-friendly alert with missing fields
+        if (missingFields.length > 0) {
+          Alert.alert(
+            'Required Fields Missing',
+            `Please fill in the following fields:\n\n• ${missingFields.join('\n• ')}`,
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        Alert.alert('Error', handleApiError(error));
+      }
     } finally {
       setLoading(false);
     }
@@ -128,6 +180,7 @@ const EditProfileScreen: React.FC = () => {
             placeholder="e.g., Class 5-10, HSC, SSC"
             value={formData.expected_class}
             onChangeText={(value) => updateField('expected_class', value)}
+            error={errors.expected_class}
             required
           />
 
@@ -136,6 +189,7 @@ const EditProfileScreen: React.FC = () => {
             placeholder="e.g., Mathematics, Physics, English"
             value={formData.expected_subject}
             onChangeText={(value) => updateField('expected_subject', value)}
+            error={errors.expected_subject}
             required
           />
 
@@ -145,6 +199,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.expected_medium}
             options={MEDIUM_OPTIONS}
             onValueChange={(value) => updateField('expected_medium', value)}
+            error={errors.expected_medium}
             required
           />
 
@@ -154,6 +209,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.day_per_week}
             options={DAYS_OPTIONS}
             onValueChange={(value) => updateField('day_per_week', value)}
+            error={errors.day_per_week}
             required
           />
 
@@ -163,6 +219,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.expected_salary}
             onChangeText={(value) => updateField('expected_salary', value)}
             keyboardType="numeric"
+            error={errors.expected_salary}
             required
           />
         </View>
@@ -180,6 +237,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.mother_sister_phone}
             onChangeText={(value) => updateField('mother_sister_phone', value)}
             keyboardType="phone-pad"
+            error={errors.mother_sister_phone}
             required
           />
 
@@ -188,6 +246,7 @@ const EditProfileScreen: React.FC = () => {
             placeholder="Enter school/madrasa name"
             value={formData.school_name}
             onChangeText={(value) => updateField('school_name', value)}
+            error={errors.school_name}
             required
           />
 
@@ -197,6 +256,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.ssc_group}
             options={SSC_GROUP_OPTIONS}
             onValueChange={(value) => updateField('ssc_group', value)}
+            error={errors.ssc_group}
             required
           />
 
@@ -205,6 +265,7 @@ const EditProfileScreen: React.FC = () => {
             placeholder="Enter college/madrasa name"
             value={formData.college_name}
             onChangeText={(value) => updateField('college_name', value)}
+            error={errors.college_name}
             required
           />
 
@@ -214,6 +275,7 @@ const EditProfileScreen: React.FC = () => {
             value={formData.hsc_group}
             options={HSC_GROUP_OPTIONS}
             onValueChange={(value) => updateField('hsc_group', value)}
+            error={errors.hsc_group}
             required
           />
         </View>

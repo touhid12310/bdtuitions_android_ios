@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -19,6 +20,7 @@ import { useAuthStore } from '../../store/authStore';
 import apiClient from '../../api/client';
 import { API_ENDPOINTS } from '../../constants/api';
 import { DashboardStats } from '../../types';
+import { getImageUrl } from '../../utils/formatting';
 
 interface StatCardProps {
   title: string;
@@ -43,6 +45,9 @@ const DashboardScreen: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const imageUrl = getImageUrl(teacher?.personal_photo);
 
   const fetchStats = async () => {
     try {
@@ -85,10 +90,45 @@ const DashboardScreen: React.FC = () => {
       >
       {/* Welcome Card */}
       <Card style={styles.welcomeCard}>
-        <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.nameText}>{teacher?.teacher_name || 'Teacher'}</Text>
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>{stats?.profile_status || teacher?.status}</Text>
+        <View style={styles.welcomeRow}>
+          <View style={styles.avatarContainer}>
+            {imageUrl && !imageError ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.avatar}
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Icon name="account" size={32} color="rgba(255,255,255,0.8)" />
+              </View>
+            )}
+          </View>
+          <View style={styles.welcomeContent}>
+            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.nameText}>{teacher?.teacher_name || 'Teacher'}</Text>
+            <View style={styles.badgesContainer}>
+              <View style={styles.badgesRow}>
+                {teacher?.teacher_code && (
+                  <View style={styles.teacherIdBadge}>
+                    <Text style={styles.badgeText}>ID: {teacher.teacher_code}</Text>
+                  </View>
+                )}
+                {teacher?.city && (
+                  <View style={styles.locationBadge}>
+                    <Icon name="map-marker" size={12} color="#fff" />
+                    <Text style={styles.badgeText}>{teacher.city}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={[
+                styles.statusBadge,
+                (stats?.profile_status || teacher?.status) === 'Profile Incomplete' && styles.statusBadgeIncomplete
+              ]}>
+                <Text style={styles.badgeText}>{stats?.profile_status || teacher?.status}</Text>
+              </View>
+            </View>
+          </View>
         </View>
       </Card>
 
@@ -181,6 +221,33 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginBottom: spacing.lg,
   },
+  welcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    marginRight: spacing.md,
+  },
+  avatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  avatarPlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  welcomeContent: {
+    flex: 1,
+  },
   welcomeText: {
     fontSize: fontSize.md,
     color: 'rgba(255,255,255,0.8)',
@@ -191,18 +258,44 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: spacing.xs,
   },
+  badgesContainer: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  teacherIdBadge: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
   statusBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
-    marginTop: spacing.sm,
   },
-  statusText: {
+  statusBadgeIncomplete: {
+    backgroundColor: colors.error,
+  },
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  badgeText: {
     fontSize: fontSize.xs,
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: fontSize.lg,
